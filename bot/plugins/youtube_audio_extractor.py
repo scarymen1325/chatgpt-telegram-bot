@@ -2,14 +2,14 @@ import logging
 import re
 from typing import Dict
 
-from pytube import YouTube
+from yt_dlp import YoutubeDL
 
 from .plugin import Plugin
 
 
 class YouTubeAudioExtractorPlugin(Plugin):
     """
-    A plugin to extract audio from a YouTube video
+    A plugin to extract audio from a YouTube video using yt-dlp
     """
 
     def get_source_name(self) -> str:
@@ -31,17 +31,29 @@ class YouTubeAudioExtractorPlugin(Plugin):
     async def execute(self, function_name, helper, **kwargs) -> Dict:
         link = kwargs['youtube_link']
         try:
-            video = YouTube(link)
-            audio = video.streams.filter(only_audio=True, file_extension='mp4').first()
-            output = re.sub(r'[^\w\-_\. ]', '_', video.title) + '.mp3'
-            audio.download(filename=output)
-            return {
-                'direct_result': {
-                    'kind': 'file',
-                    'format': 'path',
-                    'value': output
-                }
+            # Normalize the URL
+            clean_link = re.sub(r'&feature=.*', '', link)
+
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': '%(title)s.%(ext)s',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '320',
+                }],
             }
+
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(clean_link, download=True)
+                output = ydl.prepare_filename(info).replace('.webm', '.mp3')  # Adjust for mp3 file extension
+                return {
+                    'direct_result': {
+                        'kind': 'file',
+                        'format': 'path',
+                        'value': output
+                    }
+                }
         except Exception as e:
             logging.warning(f'Failed to extract audio from YouTube video: {str(e)}')
             return {'result': 'Failed to extract audio'}
